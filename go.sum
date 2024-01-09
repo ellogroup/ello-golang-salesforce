@@ -21,8 +21,8 @@ github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f h1:lO4WD4F/rVNCu3HqELle0jiPLLBs70cWOduZpkS1E78=
 github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f/go.mod h1:cuUVRXasLTGF7a8hSLbxyZXjz+1KgoB3wDUb6vlszIc=
-github.com/ellogroup/ello-golang-cache v1.0.0 h1:2KEv2dDeIVcerV4Jj9jlWteJ4O9D1yYZT9I92e3vhoI=
-github.com/ellogroup/ello-golang-cache v1.0.0/go.mod h1:DBxA5nsjW2J2tDTzJE/g73ljE8LbR6iunBi2Pw5yUX8=
+github.com/ellogroup/ello-golang-cache v1.0.1 h1:JFdiFWsPq1gfVGDYonsPxPOHqUvObZP00/44zveAC+0=
+github.com/ellogroup/ello-golang-cache v1.0.1/go.mod h1:gwyQvAWFP/Rb4aSTu7bxcvaymkYKhgKMmId4ptakppE=
 github.com/gabriel-vasile/mimetype v1.4.2 h1:w5qFW6JKBz9Y393Y4q372O9A7cUSequkh1Q7OhCmWKU=
 github.com/gabriel-vasile/mimetype v1.4.2/go.mod h1:zApsH/mKG4w07erKIaJPFiX0Tsq9BFQgN3qGY5GnNgA=
 github.com/go-playground/assert/v2 v2.2.0 h1:JvknZsQTYeFEAhQwI4qEt9cyV5ONwRHC+lYKSsYSR8s=
