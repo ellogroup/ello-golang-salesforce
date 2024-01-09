@@ -1,12 +1,12 @@
 module github.com/ellogroup/ello-golang-salesforce
 
-go 1.21.3
+go 1.21.5
 
 require (
 	github.com/aws/aws-sdk-go-v2 v1.21.2
 	github.com/aws/aws-sdk-go-v2/service/secretsmanager v1.21.5
 	github.com/cenkalti/backoff/v4 v4.2.1
-	github.com/ellogroup/ello-golang-cache v1.0.0
+	github.com/ellogroup/ello-golang-cache v1.0.1
 	github.com/go-playground/validator/v10 v10.15.5
 	github.com/golang-jwt/jwt/v5 v5.0.0
 	github.com/google/uuid v1.3.1
