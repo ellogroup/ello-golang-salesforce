@@ -93,7 +93,58 @@ func Query[E any](ctx context.Context, h *RequestHelper, q string) (*QueryRespon
 	return parsedResp, nil
 }
 
-// Patch sends a patch request to salesforce to update a resource
+// Post sends a post request to salesforce to create an object
+// - uses the baseUrl, tokenGetter and http client on RequestHelper
+// - returns the id of the newly created object
+func Post(ctx context.Context, h *RequestHelper, name string, record any) (string, error) {
+	reqUrl := fmt.Sprintf("%s/services/data/v%d.0/sobjects/%s", h.baseUrl, h.apiVersion, name)
+
+	reqBody, err := json.Marshal(record)
+	if err != nil {
+		return "", fmt.Errorf("unable to create salesforce payload: %w", err)
+	}
+
+	req, err := http.NewRequest(http.MethodPost, reqUrl, bytes.NewReader(reqBody))
+	if err != nil {
+		return "", fmt.Errorf("unable to create salesforce request: %w", err)
+	}
+	token, err := h.tokenGetter.Get(ctx)
+	if err != nil {
+		return "", fmt.Errorf("unable to create salesforce auth token: %w", err)
+	}
+	req.Header = http.Header{
+		"Content-Type":  {"application/json"},
+		"Authorization": {"Bearer " + token},
+	}
+
+	resp, err := h.client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("unable to send request to salesforce: %w", err)
+	}
+
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		return "", fmt.Errorf("unexpected salesforce response code: %d", resp.StatusCode)
+	}
+
+	resBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("unable to parse response body: %w", err)
+	}
+	defer resp.Body.Close()
+
+	var parsedResp *PostResponse
+	if err = json.Unmarshal(resBody, &parsedResp); err != nil {
+		return "", err
+	}
+
+	if !parsedResp.Success {
+		return "", fmt.Errorf("salesforce returns a failure result: %s", resBody)
+	}
+
+	return parsedResp.Id, nil
+}
+
+// Patch sends a patch request to salesforce to update an object
 // - uses the baseUrl, tokenGetter and http client on RequestHelper to query salesforce
 // - returns the status code in the response, as patch requests could result in 200, 201 or 204
 func Patch(ctx context.Context, h *RequestHelper, name, id string, record any) (int, error) {
@@ -128,4 +179,35 @@ func Patch(ctx context.Context, h *RequestHelper, name, id string, record any) (
 	}
 
 	return resp.StatusCode, nil
+}
+
+// Delete sends a delete request to salesforce to delete an object
+// - uses the baseUrl, tokenGetter and http client on RequestHelper
+func Delete(ctx context.Context, h *RequestHelper, name, id string) error {
+	reqUrl := fmt.Sprintf("%s/services/data/v%d.0/sobjects/%s/%s", h.baseUrl, h.apiVersion, name, id)
+
+	req, err := http.NewRequest(http.MethodDelete, reqUrl, nil)
+	if err != nil {
+		return fmt.Errorf("unable to create salesforce request: %w", err)
+	}
+
+	token, err := h.tokenGetter.Get(ctx)
+	if err != nil {
+		return fmt.Errorf("unable to create salesforce auth token: %w", err)
+	}
+	req.Header = http.Header{
+		"Content-Type":  {"application/json"},
+		"Authorization": {"Bearer " + token},
+	}
+
+	resp, err := h.client.Do(req)
+	if err != nil {
+		return fmt.Errorf("unable to send request to salesforce: %w", err)
+	}
+
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		return fmt.Errorf("unexpected salesforce response code: %d", resp.StatusCode)
+	}
+
+	return nil
 }

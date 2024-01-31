@@ -9,6 +9,12 @@ type QueryResponse[E any] struct {
 	Records   []E  `json:"records"`
 }
 
+// PostResponse is the response from Salesforce for a post/create request
+type PostResponse struct {
+	Id      string `json:"id"`
+	Success bool   `json:"success"`
+}
+
 // Attributes to be added, optionally, to concrete types of E for QueryResponse[E]
 type Attributes struct {
 	Type string `json:"type"`
