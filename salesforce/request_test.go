@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"io"
 	"net/http"
+	"strings"
 	"testing"
 )
 
@@ -257,6 +258,158 @@ func TestQuery(t *testing.T) {
 	}
 }
 
+func TestPost(t *testing.T) {
+	newRecord := struct {
+		One string `json:"one"`
+		Two int    `json:"two"`
+	}{
+		One: "test",
+		Two: 123,
+	}
+	type args struct {
+		ctx    context.Context
+		h      *RequestHelper
+		name   string
+		record any
+	}
+	tests := []struct {
+		name    string
+		args    args
+		want    string
+		wantErr assert.ErrorAssertionFunc
+	}{
+		{
+			name: "successful response, returns created id",
+			args: args{
+				ctx: context.Background(),
+				h: &RequestHelper{
+					tokenGetter: newTokenGetterMock("token", nil),
+					client: newHttpClientMock(&http.Response{
+						StatusCode: 201,
+						Body:       io.NopCloser(strings.NewReader(`{"id":"id-123","success":true}`)),
+					}, nil),
+					baseUrl:    "baseUrl",
+					apiVersion: 55,
+				},
+				name:   "object-123",
+				record: newRecord,
+			},
+			want:    "id-123",
+			wantErr: assert.NoError,
+		},
+		{
+			name: "response contains failed status, returns error",
+			args: args{
+				ctx: context.Background(),
+				h: &RequestHelper{
+					tokenGetter: newTokenGetterMock("token", nil),
+					client: newHttpClientMock(&http.Response{
+						StatusCode: 201,
+						Body:       io.NopCloser(strings.NewReader(`{"id":"id-123","success":false}`)),
+					}, nil),
+					baseUrl:    "baseUrl",
+					apiVersion: 55,
+				},
+				name:   "object-123",
+				record: newRecord,
+			},
+			want:    "",
+			wantErr: assert.Error,
+		},
+		{
+			name: "response contains invalid json, returns error",
+			args: args{
+				ctx: context.Background(),
+				h: &RequestHelper{
+					tokenGetter: newTokenGetterMock("token", nil),
+					client: newHttpClientMock(&http.Response{
+						StatusCode: 201,
+						Body:       io.NopCloser(strings.NewReader(`{invalid:json}`)),
+					}, nil),
+					baseUrl:    "baseUrl",
+					apiVersion: 55,
+				},
+				name:   "object-123",
+				record: newRecord,
+			},
+			want:    "",
+			wantErr: assert.Error,
+		},
+		{
+			name: "response status code is 400, returns error",
+			args: args{
+				ctx: context.Background(),
+				h: &RequestHelper{
+					tokenGetter: newTokenGetterMock("token", nil),
+					client: newHttpClientMock(&http.Response{
+						StatusCode: 400,
+					}, nil),
+					baseUrl:    "baseUrl",
+					apiVersion: 55,
+				},
+				name:   "object-123",
+				record: newRecord,
+			},
+			want:    "",
+			wantErr: assert.Error,
+		},
+		{
+			name: "client error, returns error",
+			args: args{
+				ctx: context.Background(),
+				h: &RequestHelper{
+					tokenGetter: newTokenGetterMock("token", nil),
+					client:      newHttpClientMock(nil, errors.New("http error")),
+					baseUrl:     "baseUrl",
+					apiVersion:  55,
+				},
+				name:   "object-123",
+				record: newRecord,
+			},
+			want:    "",
+			wantErr: assert.Error,
+		},
+		{
+			name: "token getter error, returns error",
+			args: args{
+				ctx: context.Background(),
+				h: &RequestHelper{
+					tokenGetter: newTokenGetterMock("", errors.New("token getter error")),
+					baseUrl:     "baseUrl",
+					apiVersion:  55,
+				},
+				name:   "object-123",
+				record: newRecord,
+			},
+			want:    "",
+			wantErr: assert.Error,
+		},
+		{
+			name: "unable to create request, returns error",
+			args: args{
+				ctx: context.Background(),
+				h: &RequestHelper{
+					baseUrl:    ":",
+					apiVersion: 55,
+				},
+				name:   "object-123",
+				record: newRecord,
+			},
+			want:    "",
+			wantErr: assert.Error,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := Post(tt.args.ctx, tt.args.h, tt.args.name, tt.args.record)
+			if !tt.wantErr(t, err, fmt.Sprintf("Post(%v, %v, %v, %v)", tt.args.ctx, tt.args.h, tt.args.name, tt.args.record)) {
+				return
+			}
+			assert.Equalf(t, tt.want, got, "Post(%v, %v, %v, %v)", tt.args.ctx, tt.args.h, tt.args.name, tt.args.record)
+		})
+	}
+}
+
 func TestPatch(t *testing.T) {
 	validRecord := struct {
 		One int    `json:"one"`
@@ -372,6 +525,102 @@ func TestPatch(t *testing.T) {
 				return
 			}
 			assert.Equalf(t, tt.want, got, "Patch(<context>, %v, %v, %v, %v)", tt.args.h, tt.args.name, tt.args.id, tt.args.record)
+		})
+	}
+}
+
+func TestDelete(t *testing.T) {
+	type args struct {
+		ctx  context.Context
+		h    *RequestHelper
+		name string
+		id   string
+	}
+	tests := []struct {
+		name    string
+		args    args
+		wantErr assert.ErrorAssertionFunc
+	}{
+		{
+			name: "successful response, returns no error",
+			args: args{
+				ctx: context.Background(),
+				h: &RequestHelper{
+					tokenGetter: newTokenGetterMock("token", nil),
+					client: newHttpClientMock(&http.Response{
+						StatusCode: 204,
+					}, nil),
+					baseUrl:    "baseUrl",
+					apiVersion: 55,
+				},
+				name: "object-123",
+				id:   "id-123",
+			},
+			wantErr: assert.NoError,
+		},
+		{
+			name: "response status code is 400, returns error",
+			args: args{
+				ctx: context.Background(),
+				h: &RequestHelper{
+					tokenGetter: newTokenGetterMock("token", nil),
+					client: newHttpClientMock(&http.Response{
+						StatusCode: 400,
+					}, nil),
+					baseUrl:    "baseUrl",
+					apiVersion: 55,
+				},
+				name: "object-123",
+				id:   "id-123",
+			},
+			wantErr: assert.Error,
+		},
+		{
+			name: "client error, returns error",
+			args: args{
+				ctx: context.Background(),
+				h: &RequestHelper{
+					tokenGetter: newTokenGetterMock("token", nil),
+					client:      newHttpClientMock(nil, errors.New("http error")),
+					baseUrl:     "baseUrl",
+					apiVersion:  55,
+				},
+				name: "object-123",
+				id:   "id-123",
+			},
+			wantErr: assert.Error,
+		},
+		{
+			name: "token getter error, returns error",
+			args: args{
+				ctx: context.Background(),
+				h: &RequestHelper{
+					tokenGetter: newTokenGetterMock("", errors.New("token getter error")),
+					baseUrl:     "baseUrl",
+					apiVersion:  55,
+				},
+				name: "object-123",
+				id:   "id-123",
+			},
+			wantErr: assert.Error,
+		},
+		{
+			name: "unable to create request, returns error",
+			args: args{
+				ctx: context.Background(),
+				h: &RequestHelper{
+					baseUrl:    ":",
+					apiVersion: 55,
+				},
+				name: "object-123",
+				id:   "id-123",
+			},
+			wantErr: assert.Error,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.wantErr(t, Delete(tt.args.ctx, tt.args.h, tt.args.name, tt.args.id), fmt.Sprintf("Delete(%v, %v, %v, %v)", tt.args.ctx, tt.args.h, tt.args.name, tt.args.id))
 		})
 	}
 }
