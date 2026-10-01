@@ -145,12 +145,12 @@ func (tf TokenFetcher) obtainToken(tok string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	defer closeBody(resp)
 
 	resBody, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return "", err
 	}
-	defer resp.Body.Close()
 	var sfRes *tokenResponse
 	if err = json.Unmarshal(resBody, &sfRes); err != nil {
 		return "", err
@@ -171,10 +171,10 @@ func (tf TokenFetcher) introspect(token string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	defer closeBody(resp)
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
 		return "", fmt.Errorf("failed Call to introspect token: %v", resp)
 	}
-	defer resp.Body.Close()
 	return token, nil
 }
 
