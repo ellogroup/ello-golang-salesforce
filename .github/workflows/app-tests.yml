@@ -13,21 +13,19 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up Go
-        uses: actions/setup-go@v4
+        uses: actions/setup-go@v6
         with:
           go-version-file: './go.mod'
           cache-dependency-path: './go.sum'
 
       - name: Run Go Linter
-        uses: golangci/golangci-lint-action@v3
+        uses: golangci/golangci-lint-action@v8
         with:
-          version: 'v1.54'
+          version: 'v2.13.2'
           working-directory: '.'
-          skip-pkg-cache: true
-          skip-build-cache: true
           args: '--timeout=2m'
 
       - name: Run Gosec Security Scanner

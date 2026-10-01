@@ -152,7 +152,7 @@ func TestQuery(t *testing.T) {
 				apiVersion:  55,
 			},
 			args: "query",
-			wantErr: func(t assert.TestingT, err error, i ...interface{}) bool {
+			wantErr: func(t assert.TestingT, err error, i ...any) bool {
 				errType := &QueryError{}
 				return assert.ErrorAs(t, err, errType, i...)
 			},
@@ -168,7 +168,7 @@ func TestQuery(t *testing.T) {
 				apiVersion:  55,
 			},
 			args: "query",
-			wantErr: func(t assert.TestingT, err error, i ...interface{}) bool {
+			wantErr: func(t assert.TestingT, err error, i ...any) bool {
 				errType := &QueryError{}
 				return assert.ErrorAs(t, err, errType, i...)
 			},
