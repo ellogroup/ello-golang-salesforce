@@ -691,3 +691,52 @@ func TestRequestsUseContext(t *testing.T) {
 		})
 	}
 }
+
+type closeTrackingBody struct {
+	io.Reader
+	closed bool
+}
+
+func (b *closeTrackingBody) Close() error {
+	b.closed = true
+	return nil
+}
+
+// TestRequestsCloseBody ensures every request helper closes the response body, including on error status codes, so
+// connections are not leaked.
+func TestRequestsCloseBody(t *testing.T) {
+	calls := map[string]func(ctx context.Context, h *RequestHelper) error{
+		"Query": func(ctx context.Context, h *RequestHelper) error {
+			_, err := Query[recordStub](ctx, h, "query")
+			return err
+		},
+		"Post": func(ctx context.Context, h *RequestHelper) error {
+			_, err := Post(ctx, h, "name", recordStub{})
+			return err
+		},
+		"Patch": func(ctx context.Context, h *RequestHelper) error {
+			_, err := Patch(ctx, h, "name", "id", recordStub{})
+			return err
+		},
+		"Delete": func(ctx context.Context, h *RequestHelper) error {
+			return Delete(ctx, h, "name", "id")
+		},
+	}
+	for name, call := range calls {
+		for _, status := range []int{200, 500} {
+			t.Run(fmt.Sprintf("%s %d", name, status), func(t *testing.T) {
+				body := &closeTrackingBody{Reader: strings.NewReader(`{"id": "id", "success": true, "done": true}`)}
+				h := &RequestHelper{
+					client:      newHttpClientMock(&http.Response{StatusCode: status, Body: body}, nil),
+					tokenGetter: newTokenGetterMock("token", nil),
+					baseUrl:     "baseUrl",
+					apiVersion:  55,
+				}
+
+				_ = call(context.Background(), h)
+
+				assert.True(t, body.closed, "response body closed")
+			})
+		}
+	}
+}

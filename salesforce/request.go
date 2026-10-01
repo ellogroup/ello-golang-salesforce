@@ -78,6 +78,7 @@ func Query[E any](ctx context.Context, h *RequestHelper, q string) (*QueryRespon
 	if err != nil {
 		return nil, fmt.Errorf("unable to send request to salesforce: %w", err)
 	}
+	defer closeBody(resp)
 	if resp.StatusCode != 200 {
 		return nil, QueryError{statusCode: resp.StatusCode, queryUsed: q}
 	}
@@ -85,7 +86,6 @@ func Query[E any](ctx context.Context, h *RequestHelper, q string) (*QueryRespon
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
 
 	var parsedResp *QueryResponse[E]
 	if err = json.Unmarshal(resBody, &parsedResp); err != nil {
@@ -123,6 +123,7 @@ func Post(ctx context.Context, h *RequestHelper, name string, record any) (strin
 	if err != nil {
 		return "", fmt.Errorf("unable to send request to salesforce: %w", err)
 	}
+	defer closeBody(resp)
 
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
 		return "", fmt.Errorf("unexpected salesforce response code: %d", resp.StatusCode)
@@ -132,7 +133,6 @@ func Post(ctx context.Context, h *RequestHelper, name string, record any) (strin
 	if err != nil {
 		return "", fmt.Errorf("unable to parse response body: %w", err)
 	}
-	defer resp.Body.Close()
 
 	var parsedResp *PostResponse
 	if err = json.Unmarshal(resBody, &parsedResp); err != nil {
@@ -176,6 +176,7 @@ func Patch(ctx context.Context, h *RequestHelper, name, id string, record any) (
 	if err != nil {
 		return 0, fmt.Errorf("unable to send request to salesforce: %w", err)
 	}
+	defer closeBody(resp)
 
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
 		return resp.StatusCode, fmt.Errorf("unexpected salesforce response code: %d", resp.StatusCode)
@@ -208,10 +209,19 @@ func Delete(ctx context.Context, h *RequestHelper, name, id string) error {
 	if err != nil {
 		return fmt.Errorf("unable to send request to salesforce: %w", err)
 	}
+	defer closeBody(resp)
 
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
 		return fmt.Errorf("unexpected salesforce response code: %d", resp.StatusCode)
 	}
 
 	return nil
+}
+
+// closeBody closes the response body so the underlying connection can be reused. It is closed on every response,
+// including error status codes, which previously leaked the connection.
+func closeBody(resp *http.Response) {
+	if resp.Body != nil {
+		_ = resp.Body.Close()
+	}
 }
