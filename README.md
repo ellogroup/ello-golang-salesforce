@@ -21,10 +21,19 @@ tc := salesforce.NewTokenCache(TokenParams{
 token, err := tc.Get(ctx)
 ```
 
+To log the cache's activity, use `NewTokenCacheWithLogger` with a `*zap.Logger`, or `NewTokenCacheWithSlogLogger`
+with a `*slog.Logger`. Entries logged by the cache do not carry a context, so context attributes (such as trace IDs)
+are not added to them.
+
 ## Request Helper
 
 `salesforce.RequestHelper` is a helper for making requests to Salesforce. It holds a http client, auth token 
 cache/fetcher, and details of the Salesforce base url and api version.
+
+Every helper sends its request with the `context.Context` it is given, so cancelling the context (or reaching its
+deadline) aborts the request, and context values such as OpenTelemetry trace context reach the http client. Requests
+running after the caller's own work has finished (e.g. in a goroutine after an HTTP response is sent) should use a
+context that is not cancelled with it, such as `context.WithoutCancel(ctx)`.
 
 ### Query Helper
 

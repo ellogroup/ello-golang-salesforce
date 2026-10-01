@@ -15,6 +15,7 @@ import (
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"time"
@@ -212,6 +213,11 @@ func NewTokenCacheWithLogger(p TokenParams, log *zap.Logger) (*TokenCache, error
 			log.Named("SalesforceTokenCache"),
 		),
 	}, nil
+}
+
+// NewTokenCacheWithSlogLogger creates the same token cache as NewTokenCache, logging cache activity to log.
+func NewTokenCacheWithSlogLogger(p TokenParams, log *slog.Logger) (*TokenCache, error) {
+	return NewTokenCacheWithLogger(p, newZapLogger(log.Handler()))
 }
 
 func (tc TokenCache) Get(ctx context.Context) (string, error) {
