@@ -624,3 +624,70 @@ func TestDelete(t *testing.T) {
 		})
 	}
 }
+
+type ctxKey struct{}
+
+// TestRequestsUseContext ensures every request helper sends its request with the caller's context, so cancellation
+// and context values (such as trace context used by instrumented http clients) reach the http client.
+func TestRequestsUseContext(t *testing.T) {
+	tests := []struct {
+		name   string
+		status int
+		body   string
+		call   func(ctx context.Context, h *RequestHelper) error
+	}{
+		{
+			name:   "Query",
+			status: 200,
+			body:   `{"totalSize": 0, "done":true}`,
+			call: func(ctx context.Context, h *RequestHelper) error {
+				_, err := Query[recordStub](ctx, h, "query")
+				return err
+			},
+		},
+		{
+			name:   "Post",
+			status: 201,
+			body:   `{"id": "id", "success": true}`,
+			call: func(ctx context.Context, h *RequestHelper) error {
+				_, err := Post(ctx, h, "name", recordStub{})
+				return err
+			},
+		},
+		{
+			name:   "Patch",
+			status: 204,
+			call: func(ctx context.Context, h *RequestHelper) error {
+				_, err := Patch(ctx, h, "name", "id", recordStub{})
+				return err
+			},
+		},
+		{
+			name:   "Delete",
+			status: 204,
+			call: func(ctx context.Context, h *RequestHelper) error {
+				return Delete(ctx, h, "name", "id")
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := context.WithValue(context.Background(), ctxKey{}, "value")
+
+			httpClient := new(HttpClientMock)
+			httpClient.On("Do", mock.MatchedBy(func(req *http.Request) bool {
+				return req.Context().Value(ctxKey{}) == "value"
+			})).Return(&http.Response{StatusCode: tt.status, Body: io.NopCloser(strings.NewReader(tt.body))}, nil)
+
+			h := &RequestHelper{
+				client:      httpClient,
+				tokenGetter: newTokenGetterMock("token", nil),
+				baseUrl:     "baseUrl",
+				apiVersion:  55,
+			}
+
+			assert.NoError(t, tt.call(ctx, h))
+			httpClient.AssertExpectations(t)
+		})
+	}
+}

@@ -56,10 +56,11 @@ func (q QueryError) Error() string {
 
 // Query salesforce in a generic way
 // - uses the baseUrl, tokenGetter and http client on RequestHelper to query salesforce
+// - the request is sent with ctx, so it is cancelled with ctx and carries any values on it (e.g. trace context)
 // - QueryError returned if status code != 200 with status code of response
 func Query[E any](ctx context.Context, h *RequestHelper, q string) (*QueryResponse[E], error) {
 	reqUrl := fmt.Sprintf("%s/services/data/v%d.0/query?q=%s", h.baseUrl, h.apiVersion, url.QueryEscape(q))
-	req, err := http.NewRequest(http.MethodGet, reqUrl, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqUrl, nil)
 	if err != nil {
 		return nil, fmt.Errorf("unable to create salesforce request: %w", err)
 	}
@@ -95,6 +96,7 @@ func Query[E any](ctx context.Context, h *RequestHelper, q string) (*QueryRespon
 
 // Post sends a post request to salesforce to create an object
 // - uses the baseUrl, tokenGetter and http client on RequestHelper
+// - the request is sent with ctx, so it is cancelled with ctx and carries any values on it (e.g. trace context)
 // - returns the id of the newly created object
 func Post(ctx context.Context, h *RequestHelper, name string, record any) (string, error) {
 	reqUrl := fmt.Sprintf("%s/services/data/v%d.0/sobjects/%s", h.baseUrl, h.apiVersion, name)
@@ -104,7 +106,7 @@ func Post(ctx context.Context, h *RequestHelper, name string, record any) (strin
 		return "", fmt.Errorf("unable to create salesforce payload: %w", err)
 	}
 
-	req, err := http.NewRequest(http.MethodPost, reqUrl, bytes.NewReader(reqBody))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, reqUrl, bytes.NewReader(reqBody))
 	if err != nil {
 		return "", fmt.Errorf("unable to create salesforce request: %w", err)
 	}
@@ -146,6 +148,7 @@ func Post(ctx context.Context, h *RequestHelper, name string, record any) (strin
 
 // Patch sends a patch request to salesforce to update an object
 // - uses the baseUrl, tokenGetter and http client on RequestHelper to query salesforce
+// - the request is sent with ctx, so it is cancelled with ctx and carries any values on it (e.g. trace context)
 // - returns the status code in the response, as patch requests could result in 200, 201 or 204
 func Patch(ctx context.Context, h *RequestHelper, name, id string, record any) (int, error) {
 	reqUrl := fmt.Sprintf("%s/services/data/v%d.0/sobjects/%s/%s", h.baseUrl, h.apiVersion, name, id)
@@ -155,7 +158,7 @@ func Patch(ctx context.Context, h *RequestHelper, name, id string, record any) (
 		return 0, fmt.Errorf("unable to create salesforce payload: %w", err)
 	}
 
-	req, err := http.NewRequest(http.MethodPatch, reqUrl, bytes.NewReader(reqBody))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPatch, reqUrl, bytes.NewReader(reqBody))
 	if err != nil {
 		return 0, fmt.Errorf("unable to create salesforce request: %w", err)
 	}
@@ -183,10 +186,11 @@ func Patch(ctx context.Context, h *RequestHelper, name, id string, record any) (
 
 // Delete sends a delete request to salesforce to delete an object
 // - uses the baseUrl, tokenGetter and http client on RequestHelper
+// - the request is sent with ctx, so it is cancelled with ctx and carries any values on it (e.g. trace context)
 func Delete(ctx context.Context, h *RequestHelper, name, id string) error {
 	reqUrl := fmt.Sprintf("%s/services/data/v%d.0/sobjects/%s/%s", h.baseUrl, h.apiVersion, name, id)
 
-	req, err := http.NewRequest(http.MethodDelete, reqUrl, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, reqUrl, nil)
 	if err != nil {
 		return fmt.Errorf("unable to create salesforce request: %w", err)
 	}
