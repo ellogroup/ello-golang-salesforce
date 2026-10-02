@@ -211,3 +211,18 @@ func TestTokenFetcher_Fetch_StopsRetryingWhenContextDone(t *testing.T) {
 		t.Fatal("Fetch kept retrying after ctx was done")
 	}
 }
+
+// A caller can find the cache empty, then reach fetch only after another fetch has cached a token and finished. fetch
+// must use that token rather than fetch again.
+func TestTokenCache_fetch_UsesTokenCachedByEarlierFetch(t *testing.T) {
+	f := &fetcherStub{results: []fetchResult{{tok: "new-token"}}}
+	tc := newTestTokenCache(f, time.Hour)
+	_, err := tc.cache.Get(tokenCacheKey, func() (string, error) { return "cached-token", nil }, time.Hour)
+	require.NoError(t, err)
+
+	tok, err := tc.fetch(context.Background())
+
+	require.NoError(t, err)
+	assert.Equal(t, "cached-token", tok)
+	assert.Equal(t, int32(0), f.calls.Load())
+}

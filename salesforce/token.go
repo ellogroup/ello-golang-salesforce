@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
@@ -194,6 +195,9 @@ const (
 	tokenCacheLoggerName = "SalesforceTokenCache"
 )
 
+// errTokenNotCached is used to read the cache without fetching; it is never returned to callers.
+var errTokenNotCached = errors.New("token not cached")
+
 // TokenCache keeps a Salesforce auth token cached for ~1 hour, fetching a new one on the first Get after it expires.
 //   - Only one fetch runs at a time: concurrent Get calls while the token is being fetched share that fetch.
 //   - A Get call waits for the fetch only as long as its ctx allows; the fetch carries on for other callers and
@@ -249,6 +253,11 @@ func (tc TokenCache) Get(ctx context.Context) (string, error) {
 // fetch fetches a new token, sharing a fetch already in progress, and waits for it for as long as ctx allows.
 func (tc TokenCache) fetch(ctx context.Context) (string, error) {
 	res := tc.fetches.DoChan("token", func() (any, error) {
+		// This caller found no token, but another fetch may have cached one and finished since then.
+		if tok, err := tc.cache.Get(tokenCacheKey, func() (string, error) { return "", errTokenNotCached }, tc.ttl); err == nil {
+			return tok, nil
+		}
+
 		// Not cancelled with this caller's ctx, as other callers may be waiting on the same fetch.
 		fetchCtx := context.WithoutCancel(ctx)
 		tc.log.InfoContext(fetchCtx, "Fetching Salesforce token")
