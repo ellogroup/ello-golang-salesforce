@@ -16,12 +16,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/cenkalti/backoff/v4"
+	"github.com/cenkalti/backoff/v7"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
-	"go.uber.org/zap"
-	"go.uber.org/zap/zaptest/observer"
 )
 
 // fetcherStub is a tokenFetcher returning the configured results in order, optionally blocking until released.
@@ -156,14 +154,14 @@ func TestTokenCache_Get_CallerContextCancelled(t *testing.T) {
 
 type tokenCtxKey struct{}
 
-func newTestTokenFetcher(t *testing.T, client HttpClient) TokenFetcher {
+func newTestTokenFetcher(t *testing.T, client HTTPClient) TokenFetcher {
 	t.Helper()
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
 	require.NoError(t, err)
 	pemKey := pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(key)})
 	return TokenFetcher{
 		httpClient: client,
-		cfg:        tokenFetcherCfg{BaseUrl: "https://salesforce.example", privateKey: pemKey},
+		cfg:        tokenFetcherCfg{BaseURL: "https://salesforce.example", privateKey: pemKey},
 		backoff:    &backoff.StopBackOff{},
 	}
 }
@@ -171,7 +169,7 @@ func newTestTokenFetcher(t *testing.T, client HttpClient) TokenFetcher {
 func TestTokenFetcher_Fetch_SendsRequestsWithContext(t *testing.T) {
 	ctx := context.WithValue(context.Background(), tokenCtxKey{}, "value")
 
-	httpClient := new(HttpClientMock)
+	httpClient := new(HTTPClientMock)
 	withCtx := mock.MatchedBy(func(req *http.Request) bool { return req.Context().Value(tokenCtxKey{}) == "value" })
 	httpClient.On("Do", mock.MatchedBy(func(req *http.Request) bool {
 		return strings.HasSuffix(req.URL.Path, "/oauth2/token")
@@ -192,7 +190,7 @@ func TestTokenFetcher_Fetch_SendsRequestsWithContext(t *testing.T) {
 }
 
 func TestTokenFetcher_Fetch_StopsRetryingWhenContextDone(t *testing.T) {
-	httpClient := new(HttpClientMock)
+	httpClient := new(HTTPClientMock)
 	httpClient.On("Do", mock.Anything).Return(&http.Response{StatusCode: 500, Body: io.NopCloser(strings.NewReader(`{}`))}, nil)
 	tf := newTestTokenFetcher(t, httpClient)
 	tf.backoff = backoff.NewConstantBackOff(time.Millisecond)
@@ -211,29 +209,5 @@ func TestTokenFetcher_Fetch_StopsRetryingWhenContextDone(t *testing.T) {
 		assert.Error(t, err)
 	case <-time.After(time.Second):
 		t.Fatal("Fetch kept retrying after ctx was done")
-	}
-}
-
-func Test_zapToSlog(t *testing.T) {
-	tests := []struct {
-		name     string
-		log      func(*zap.Logger) *zap.Logger
-		wantName string
-	}{
-		{name: "Unnamed logger, uses cache name", log: func(l *zap.Logger) *zap.Logger { return l }, wantName: "SalesforceTokenCache"},
-		{name: "Named logger, appends cache name", log: func(l *zap.Logger) *zap.Logger { return l.Named("App") }, wantName: "App.SalesforceTokenCache"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			core, logs := observer.New(zap.InfoLevel)
-
-			zapToSlog(tt.log(zap.New(core))).Info("hello", slog.String("k", "v"))
-
-			require.Equal(t, 1, logs.Len())
-			e := logs.All()[0]
-			assert.Equal(t, "hello", e.Message)
-			assert.Equal(t, tt.wantName, e.LoggerName)
-			assert.Equal(t, "v", e.ContextMap()["k"])
-		})
 	}
 }

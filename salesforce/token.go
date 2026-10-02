@@ -7,13 +7,11 @@ import (
 	"fmt"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
-	"github.com/cenkalti/backoff/v4"
+	"github.com/cenkalti/backoff/v7"
 	"github.com/ellogroup/ello-golang-cache/v2/cachefunc"
 	"github.com/go-playground/validator/v10"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
-	"go.uber.org/zap"
-	"go.uber.org/zap/exp/zapslog"
 	"golang.org/x/sync/singleflight"
 	"io"
 	"log/slog"
@@ -22,38 +20,43 @@ import (
 	"time"
 )
 
-const tokenTtl = 1 * time.Hour
-const tokenCacheTtl = 58 * time.Minute
+const tokenTTL = 1 * time.Hour
+const tokenCacheTTL = 58 * time.Minute
 
+// TokenParams configures a TokenFetcher or TokenCache.
 type TokenParams struct {
-	HttpClient HttpClient             `validate:"required"`
+	HTTPClient HTTPClient             `validate:"required"`
 	SMClient   *secretsmanager.Client `validate:"required"`
 	SMKey      string                 `validate:"required"`
-	Backoff    backoff.BackOff
+	// Backoff is the retry policy for fetching a token. Defaults to an exponential back-off.
+	Backoff backoff.BackOff
+	// Logger logs TokenCache token fetches. Optional; nothing is logged when nil.
+	Logger *slog.Logger
 }
 
 type TokenFetcher struct {
-	httpClient HttpClient
+	httpClient HTTPClient
 	cfg        tokenFetcherCfg
 	backoff    backoff.BackOff
 }
 
 type tokenFetcherCfg struct {
-	BaseUrl          string `json:"baseUrl"`
+	BaseURL          string `json:"baseUrl"`
 	Hostname         string `json:"hostname"`
 	Username         string `json:"username"`
-	ClientId         string `json:"clientId"`
+	ClientID         string `json:"clientId"`
 	ClientSecret     string `json:"clientSecret"`
 	PrivateKeyBase64 string `json:"privateKeyBase64"`
 	privateKey       []byte
 }
 
-func NewTokenFetcher(p TokenParams) (*TokenFetcher, error) {
+// NewTokenFetcher creates a TokenFetcher, reading the Salesforce credentials from Secrets Manager with ctx.
+func NewTokenFetcher(ctx context.Context, p TokenParams) (*TokenFetcher, error) {
 	if err := validateTokenParams(p); err != nil {
 		return nil, err
 	}
 
-	cfgRaw, err := p.SMClient.GetSecretValue(context.Background(), &secretsmanager.GetSecretValueInput{
+	cfgRaw, err := p.SMClient.GetSecretValue(ctx, &secretsmanager.GetSecretValueInput{
 		SecretId: aws.String(p.SMKey),
 	})
 	if err != nil {
@@ -79,7 +82,7 @@ func NewTokenFetcher(p TokenParams) (*TokenFetcher, error) {
 	}
 
 	tf := &TokenFetcher{
-		httpClient: p.HttpClient,
+		httpClient: p.HTTPClient,
 		cfg:        cfg,
 		backoff:    b,
 	}
@@ -100,13 +103,13 @@ type tokenResponse struct {
 
 // Fetch generates a new Salesforce auth token, retrying with the back-off policy until it succeeds or ctx is done.
 func (tf TokenFetcher) Fetch(ctx context.Context) (string, error) {
-	return backoff.RetryWithData[string](func() (string, error) {
+	return backoff.Retry(ctx, func() (string, error) {
 		tok, err := tf.generateJwt()
 		if err != nil {
 			return "", err
 		}
 		return tf.obtainToken(ctx, tok)
-	}, backoff.WithContext(tf.backoff, ctx))
+	}, backoff.WithBackOff(tf.backoff))
 }
 
 func (tf TokenFetcher) generateJwt() (string, error) {
@@ -120,9 +123,9 @@ func (tf TokenFetcher) generateJwt() (string, error) {
 		Aud string `json:"aud,omitempty"`
 	}{
 		RegisteredClaims: jwt.RegisteredClaims{
-			Issuer:    tf.cfg.ClientId,
+			Issuer:    tf.cfg.ClientID,
 			Subject:   tf.cfg.Username,
-			ExpiresAt: jwt.NewNumericDate(time.Now().Local().Add(tokenTtl)),
+			ExpiresAt: jwt.NewNumericDate(time.Now().Local().Add(tokenTTL)),
 			ID:        uuid.New().String(),
 		},
 		Aud: tf.cfg.Hostname,
@@ -138,7 +141,7 @@ func (tf TokenFetcher) obtainToken(ctx context.Context, tok string) (string, err
 	data := url.Values{}
 	data.Add("assertion", tok)
 	data.Add("grant_type", "urn:ietf:params:oauth:grant-type:jwt-bearer")
-	uri, _ := url.ParseRequestURI(fmt.Sprintf("%s/services/oauth2/token", tf.cfg.BaseUrl))
+	uri, _ := url.ParseRequestURI(fmt.Sprintf("%s/services/oauth2/token", tf.cfg.BaseURL))
 	uri.RawQuery = data.Encode()
 	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, uri.String(), nil)
 	req.Header = http.Header{
@@ -165,9 +168,9 @@ func (tf TokenFetcher) introspect(ctx context.Context, token string) (string, er
 	data := url.Values{}
 	data.Add("token", token)
 	data.Add("token_type_hint", "access_token")
-	data.Add("client_id", tf.cfg.ClientId)
+	data.Add("client_id", tf.cfg.ClientID)
 	data.Add("client_secret", tf.cfg.ClientSecret)
-	uri, _ := url.ParseRequestURI(fmt.Sprintf("%s/services/oauth2/introspect", tf.cfg.BaseUrl))
+	uri, _ := url.ParseRequestURI(fmt.Sprintf("%s/services/oauth2/introspect", tf.cfg.BaseURL))
 	uri.RawQuery = data.Encode()
 	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, uri.String(), nil)
 	resp, err := tf.httpClient.Do(req)
@@ -204,33 +207,24 @@ type TokenCache struct {
 	log     *slog.Logger
 }
 
-// NewTokenCache creates a default implementation of a salesforce token cache, storing the token in memory using
-// ello-golang-cache's cachefunc with a ~1 hour TTL (slightly less to ensure the token doesn't expire while cached).
-// The first token is fetched before returning; if that fails it is fetched again on the first Get.
+// NewTokenCache creates a salesforce token cache, storing the token in memory using ello-golang-cache's cachefunc with
+// a ~1 hour TTL (slightly less to ensure the token doesn't expire while cached). The credentials are read and the
+// first token fetched with ctx before returning; if the first fetch fails it is logged and retried on the first Get.
+// Token fetches are logged to p.Logger, if set.
 // for more info see: https://ellogroup.atlassian.net/wiki/spaces/EP/pages/13402137/Salesforce+Package#TokenFetcher-and-TokenCache
-func NewTokenCache(p TokenParams) (*TokenCache, error) {
-	return NewTokenCacheWithSlogLogger(p, slog.New(slog.DiscardHandler))
-}
-
-// NewTokenCacheWithLogger creates the same token cache as NewTokenCache, logging token fetches to log.
-func NewTokenCacheWithLogger(p TokenParams, log *zap.Logger) (*TokenCache, error) {
-	return newTokenCache(p, zapToSlog(log))
-}
-
-// NewTokenCacheWithSlogLogger creates the same token cache as NewTokenCache, logging token fetches to log.
-func NewTokenCacheWithSlogLogger(p TokenParams, log *slog.Logger) (*TokenCache, error) {
-	return newTokenCache(p, log.With(slog.String("logger", tokenCacheLoggerName)))
-}
-
-func newTokenCache(p TokenParams, log *slog.Logger) (*TokenCache, error) {
-	tf, err := NewTokenFetcher(p)
+func NewTokenCache(ctx context.Context, p TokenParams) (*TokenCache, error) {
+	tf, err := NewTokenFetcher(ctx, p)
 	if err != nil {
 		return nil, err
 	}
-	tc := newTokenCacheWithFetcher(tf, tokenCacheTtl, log)
-	if _, err := tc.Get(context.Background()); err != nil {
+	log := slog.New(slog.DiscardHandler)
+	if p.Logger != nil {
+		log = p.Logger.With(slog.String("logger", tokenCacheLoggerName))
+	}
+	tc := newTokenCacheWithFetcher(tf, tokenCacheTTL, log)
+	if _, err := tc.Get(ctx); err != nil {
 		// Not returned, so services still start while Salesforce auth is unavailable; the next Get tries again.
-		log.Error("Unable to fetch initial Salesforce token, it will be fetched on the next request", slog.Any("error", err))
+		log.ErrorContext(ctx, "Unable to fetch initial Salesforce token, it will be fetched on the next request", slog.Any("error", err))
 	}
 	return tc, nil
 }
@@ -243,15 +237,6 @@ func newTokenCacheWithFetcher(f tokenFetcher, ttl time.Duration, log *slog.Logge
 		fetches: &singleflight.Group{},
 		log:     log,
 	}
-}
-
-// zapToSlog converts a zap logger to slog for NewTokenCacheWithLogger, naming it as the previous zap-based cache did.
-func zapToSlog(log *zap.Logger) *slog.Logger {
-	name := tokenCacheLoggerName
-	if log.Name() != "" {
-		name = log.Name() + "." + name
-	}
-	return slog.New(zapslog.NewHandler(log.Core(), zapslog.WithName(name)))
 }
 
 // Get returns the cached token, fetching a new one if it has expired.

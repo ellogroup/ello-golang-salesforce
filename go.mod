@@ -1,4 +1,4 @@
-module github.com/ellogroup/ello-golang-salesforce
+module github.com/ellogroup/ello-golang-salesforce/v2
 
 go 1.26.0
 
@@ -7,14 +7,12 @@ toolchain go1.27.1
 require (
 	github.com/aws/aws-sdk-go-v2 v1.47.1
 	github.com/aws/aws-sdk-go-v2/service/secretsmanager v1.50.1
-	github.com/cenkalti/backoff/v4 v4.3.0
+	github.com/cenkalti/backoff/v7 v7.0.1
 	github.com/ellogroup/ello-golang-cache/v2 v2.0.0
 	github.com/go-playground/validator/v10 v10.30.5
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/google/uuid v1.6.0
 	github.com/stretchr/testify v1.12.1
-	go.uber.org/zap v1.28.0
-	go.uber.org/zap/exp v0.3.0
 	golang.org/x/sync v0.23.0
 )
 
@@ -28,7 +26,6 @@ require (
 	github.com/go-playground/universal-translator v0.18.2 // indirect
 	github.com/leodido/go-urn v1.5.0 // indirect
 	github.com/stretchr/objx v0.5.3 // indirect
-	go.uber.org/multierr v1.11.0 // indirect
 	go.yaml.in/yaml/v3 v3.0.5 // indirect
 	golang.org/x/crypto v0.57.0 // indirect
 	golang.org/x/sys v0.48.0 // indirect

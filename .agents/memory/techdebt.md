@@ -15,13 +15,13 @@ exists is as important as the debt itself.
 | Critical | 0 | 0 | 0 | 0 |
 | High | 0 | 0 | 0 | 0 |
 | Medium | 0 | 0 | 0 | 0 |
-| Low | 1 | 0 | 0 | 0 |
+| Low | 0 | 0 | 1 | 0 |
 
 ---
 
 ## TD-001 — zap stays a dependency via the public API; dropping it needs a v2
 
-**Status:** Open
+**Status:** Resolved (2026-10-02, v2.0.0, PR #4)
 **Severity:** Low
 **Category:** Dependencies
 **Created:** 2026-10-02
@@ -79,6 +79,24 @@ renamed types are referenced.
 
 **Effort estimate:** S — hours (API changes, release, consumer bumps)
 **Resolution target:** Backlog
+
+**Resolution:**
+Done in v2.0.0 (`github.com/ellogroup/ello-golang-salesforce/v2`), as
+requested in review on PR #4:
+
+- zap is removed. The token cache logs through the optional
+  `TokenParams.Logger` (`*slog.Logger`), and zap and zap/exp are no longer
+  dependencies.
+- `NewTokenFetcher(ctx, p)` and `NewTokenCache(ctx, p)` read Secrets Manager
+  and fetch the first token with the caller's context.
+- Exported identifiers are Go style: `HTTPClient`, `PostResponse.ID`,
+  `Attributes.URL`. JSON tags are unchanged.
+- `cenkalti/backoff` moves v4 → v7, so `TokenParams.Backoff` is now a v7
+  `BackOff`.
+
+The README's "Migrating from v1" section lists each change. Consumers move
+by switching their import to `/v2`; the per-consumer edits are in the table
+above.
 
 ---
 
